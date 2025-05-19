@@ -9,6 +9,8 @@ const VIEW_NAME = "constructions_view";
  * Inclui tratamento de valores nulos ou indefinidos
  */
 const mapSupabaseDataToConstruction = (data: any): Construction => {
+  if (!data) return createEmptyConstruction();
+  
   return {
     id: data.id || data["Nome do Arquivo"] || "",
     "Nome do Arquivo": data["Nome do Arquivo"] || "",
@@ -18,16 +20,38 @@ const mapSupabaseDataToConstruction = (data: any): Construction => {
     "Endereço": data["Endereço"] || "",
     "Nome da Empresa": data["Nome da Empresa"] || "",
     "Cidade": data["Cidade"] || "",
-    "Área Construída": parseFloat(data["Área Construída"]) || 0,
-    "Área do Terreno": parseFloat(data["Área do Terreno"]) || 0,
-    latitude: parseFloat(data.latitude) || 0,
-    longitude: parseFloat(data.longitude) || 0,
+    "Área Construída": parseFloat(data["Área Construída"] || "0") || 0,
+    "Área do Terreno": parseFloat(data["Área do Terreno"] || "0") || 0,
+    latitude: parseFloat(data.latitude || "0") || 0,
+    longitude: parseFloat(data.longitude || "0") || 0,
     status: (data.status as StatusValue) || "Análise" // Valor padrão caso status seja nulo
   } as Construction;
 };
 
 /**
+ * Cria um objeto Construction vazio com valores padrão
+ */
+const createEmptyConstruction = (): Construction => {
+  return {
+    id: "",
+    "Nome do Arquivo": "",
+    "Data": "",
+    "Tipo de Licença": "",
+    "CNPJ": "",
+    "Endereço": "",
+    "Nome da Empresa": "",
+    "Cidade": "",
+    "Área Construída": 0,
+    "Área do Terreno": 0,
+    latitude: 0,
+    longitude: 0,
+    status: "Análise"
+  } as Construction;
+};
+
+/**
  * Busca todas as construções da view no Supabase
+ * Sempre retorna um array, mesmo em caso de erro
  */
 export async function fetchConstructions(): Promise<Construction[]> {
   console.log("Fetching constructions from Supabase");
@@ -39,13 +63,19 @@ export async function fetchConstructions(): Promise<Construction[]> {
     
     if (error) {
       console.error("Supabase error:", error);
-      throw new Error(error.message);
+      return []; // Retorna array vazio em caso de erro
+    }
+    
+    // Garante que data seja um array antes de mapear
+    if (!data || !Array.isArray(data)) {
+      console.warn("No data returned or data is not an array");
+      return [];
     }
     
     // Mapeia os dados para o formato Construction antes de retornar
-    return data ? data.map(mapSupabaseDataToConstruction) : [];
+    return data.map(item => mapSupabaseDataToConstruction(item));
   } catch (error) {
     console.error("Error fetching constructions:", error);
-    throw error;
+    return []; // Retorna array vazio em caso de exceção
   }
 }
