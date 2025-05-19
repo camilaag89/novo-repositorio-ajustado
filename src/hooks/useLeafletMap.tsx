@@ -28,8 +28,8 @@ export const useLeafletMap = ({
   const [mapLoaded, setMapLoaded] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const [leafletLoaded, setLeafletLoaded] = useState(false);
-  const initializationAttempted = useRef(false);
   const mapInitialized = useRef(false);
+  const isComponentMounted = useRef(true);
   
   // Memorizar as construções para evitar re-renderizações desnecessárias
   const memoizedConstructions = useMemo(() => constructions, [JSON.stringify(constructions)]);
@@ -37,6 +37,15 @@ export const useLeafletMap = ({
   // Memorizar o centro e zoom para evitar re-renderizações desnecessárias
   const memoizedCenter = useMemo(() => center, [center?.[0], center?.[1]]);
   const memoizedZoom = useMemo(() => zoom, [zoom]);
+
+  // Verificar se o componente está montado
+  useEffect(() => {
+    isComponentMounted.current = true;
+    
+    return () => {
+      isComponentMounted.current = false;
+    };
+  }, []);
 
   // Carregar o Leaflet
   useEffect(() => {
@@ -62,12 +71,16 @@ export const useLeafletMap = ({
     scriptElement.integrity = "sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=";
     scriptElement.crossOrigin = "";
     scriptElement.onload = ( ) => {
-      console.log("Leaflet loaded successfully");
-      setLeafletLoaded(true);
+      if (isComponentMounted.current) {
+        console.log("Leaflet loaded successfully");
+        setLeafletLoaded(true);
+      }
     };
     scriptElement.onerror = (error) => {
-      console.error("Error loading Leaflet:", error);
-      setMapError("Erro ao carregar a biblioteca de mapas.");
+      if (isComponentMounted.current) {
+        console.error("Error loading Leaflet:", error);
+        setMapError("Erro ao carregar a biblioteca de mapas.");
+      }
     };
     document.head.appendChild(scriptElement);
     
@@ -91,12 +104,17 @@ export const useLeafletMap = ({
         fadeAnimation: false,
         zoomAnimation: false,
         markerZoomAnimation: false,
-        preferCanvas: true
+        preferCanvas: true,
+        attributionControl: false, // Remover controle de atribuição para evitar piscadas
+        zoomControl: false // Remover controle de zoom padrão para evitar piscadas
       }).setView(memoizedCenter, memoizedZoom);
       
       // Adicionar camada de tiles (OpenStreetMap)
       window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        noWrap: true, // Evitar repetição de tiles
+        updateWhenIdle: true, // Atualizar apenas quando o mapa estiver parado
+        updateWhenZooming: false // Não atualizar durante o zoom
       } ).addTo(newMap);
       
       // Adicionar controles de zoom
@@ -107,20 +125,29 @@ export const useLeafletMap = ({
       map.current = newMap;
       
       // Forçar recálculo do tamanho do mapa após um pequeno delay
-      setTimeout(() => {
-        if (map.current) {
-          map.current.invalidateSize();
+      const timer = setTimeout(() => {
+        if (map.current && isComponentMounted.current) {
+          map.current.invalidateSize({
+            animate: false,
+            pan: false
+          });
           console.log("Map size recalculated");
+          
+          // Definir o estado de carregamento apenas após o recálculo
+          setMapLoaded(true);
+          setMapError(null);
+          
+          // Notificar o usuário apenas após o mapa estar completamente carregado
+          toast({
+            title: "Mapa carregado",
+            description: "O mapa foi carregado com sucesso!",
+          });
         }
-      }, 100);
+      }, 200);
       
-      setMapLoaded(true);
-      setMapError(null);
-      
-      toast({
-        title: "Mapa carregado",
-        description: "O mapa foi carregado com sucesso!",
-      });
+      return () => {
+        clearTimeout(timer);
+      };
     } catch (error) {
       console.error("Error initializing Leaflet map:", error);
       setMapError("Erro ao inicializar o mapa. Usando visualização alternativa.");
@@ -131,35 +158,34 @@ export const useLeafletMap = ({
           stack: error.stack,
         });
       }
+      
+      // Resetar o estado de inicialização em caso de erro
+      mapInitialized.current = false;
     }
     
     return () => {
       if (map.current) {
         console.log("Cleaning up map instance");
+        
+        // Limpar marcadores antes de remover o mapa
+        markers.current.forEach((marker) => {
+          if (marker) marker.remove();
+        });
+        markers.current = [];
+        
+        // Remover o mapa
         map.current.remove();
         map.current = null;
-        markers.current = [];
+        
+        // Resetar o estado de inicialização
         mapInitialized.current = false;
       }
     };
-  }, [leafletLoaded]); // IMPORTANTE: removido center e zoom das dependências
-
-  // Atualizar centro e zoom quando mudarem, sem reinicializar o mapa
-  useEffect(() => {
-    if (!map.current || !mapLoaded) return;
-    
-    try {
-      map.current.setView(memoizedCenter, memoizedZoom, {
-        animate: false // Desativar animação para evitar piscadas
-      });
-    } catch (error) {
-      console.error("Error updating map view:", error);
-    }
-  }, [memoizedCenter, memoizedZoom, mapLoaded]);
+  }, [leafletLoaded, memoizedCenter, memoizedZoom]); // Adicionei center e zoom de volta, mas memorizados
 
   // Adicionar marcadores ao mapa
   useEffect(() => {
-    if (!map.current || !mapLoaded || !memoizedConstructions.length || !window.L) return;
+    if (!map.current || !mapLoaded || !memoizedConstructions.length || !window.L || !isComponentMounted.current) return;
 
     // Limpar marcadores existentes
     markers.current.forEach((marker) => {
@@ -170,7 +196,7 @@ export const useLeafletMap = ({
     // Adicionar novos marcadores
     memoizedConstructions.forEach((construction) => {
       try {
-        if (!construction.latitude || !construction.longitude) return;
+        if (!construction.latitude || !construction.longitude || !map.current) return;
         
         // Criar ícone personalizado
         const icon = window.L.divIcon({
@@ -212,10 +238,19 @@ export const useLeafletMap = ({
     });
     
     // Forçar recálculo do tamanho do mapa após adicionar marcadores
-    if (map.current) {
-      setTimeout(() => {
-        map.current.invalidateSize();
-      }, 50);
+    if (map.current && isComponentMounted.current) {
+      const timer = setTimeout(() => {
+        if (map.current && isComponentMounted.current) {
+          map.current.invalidateSize({
+            animate: false,
+            pan: false
+          });
+        }
+      }, 100);
+      
+      return () => {
+        clearTimeout(timer);
+      };
     }
   }, [memoizedConstructions, onMarkerClick, mapLoaded]);
 
@@ -243,16 +278,26 @@ export const useLeafletMap = ({
   useEffect(() => {
     if (!map.current || !mapLoaded) return;
     
+    let resizeTimer: NodeJS.Timeout;
+    
     const handleResize = () => {
-      if (map.current) {
-        map.current.invalidateSize();
-      }
+      // Usar debounce para evitar múltiplas chamadas durante o redimensionamento
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        if (map.current && isComponentMounted.current) {
+          map.current.invalidateSize({
+            animate: false,
+            pan: false
+          });
+        }
+      }, 100);
     };
     
     window.addEventListener('resize', handleResize);
     
     return () => {
       window.removeEventListener('resize', handleResize);
+      clearTimeout(resizeTimer);
     };
   }, [mapLoaded]);
 
