@@ -5,13 +5,18 @@ import CategoryScroller from '@/components/CategoryScroller';
 import { Construction } from '@/types/construction';
 import { fetchConstructions } from '@/data/supabaseService';
 
+// Definir interface para os filtros
+interface Filters {
+  [key: string]: any;
+}
+
 export default function IndexPage() {
   const [constructions, setConstructions] = useState<Construction[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [filters, setFilters] = useState({});
+  const [filters, setFilters] = useState<Filters>({});
   
-  // Corrigido: useEffect com array de dependências vazio para carregar apenas UMA vez
+  // useEffect com array de dependências vazio para carregar apenas UMA vez
   useEffect(() => {
     let isMounted = true;
     
@@ -42,28 +47,24 @@ export default function IndexPage() {
     };
   }, []); // Array vazio = executar apenas uma vez na montagem
   
-  // Memorizar as construções para evitar re-renderizações desnecessárias
-  const memoizedConstructions = useMemo(() => constructions, [constructions]);
-  
   // Função para aplicar filtros (sem causar requisições adicionais)
-  const handleFilterChange = (newFilters) => {
+  const handleFilterChange = (newFilters: Filters) => {
     console.log("Filtros aplicados:", newFilters);
     setFilters(newFilters);
-    // Não buscar dados novamente, apenas filtrar os dados existentes
   };
   
   // Aplicar filtros localmente
   const filteredConstructions = useMemo(() => {
-    if (!Object.keys(filters).length) return memoizedConstructions;
+    if (!Object.keys(filters).length) return constructions;
     
-    return memoizedConstructions.filter(construction => {
+    return constructions.filter(construction => {
       // Implemente sua lógica de filtro aqui
       // Exemplo:
       // if (filters.status && construction.status !== filters.status) return false;
       // if (filters.city && construction.city !== filters.city) return false;
       return true;
     });
-  }, [memoizedConstructions, filters]);
+  }, [constructions, filters]);
   
   return (
     <div className="container mx-auto p-4">
