@@ -11,11 +11,11 @@ export default function IndexPage() {
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState({});
   
-  // Corrigido: useEffect com array de dependências vazio para carregar apenas UMA vez
+  // Importante: useEffect com array de dependências vazio para carregar apenas UMA vez
   useEffect(() => {
     let isMounted = true;
     
-    const fetchData = async () => {
+    const loadData = async () => {
       try {
         setLoading(true);
         const data = await fetchConstructions();
@@ -34,7 +34,7 @@ export default function IndexPage() {
       }
     };
     
-    fetchData();
+    loadData();
     
     // Função de limpeza para evitar atualizações de estado após desmontagem
     return () => {
@@ -47,23 +47,10 @@ export default function IndexPage() {
   
   // Função para aplicar filtros (sem causar requisições adicionais)
   const handleFilterChange = (newFilters) => {
-    console.log("Filtros aplicados:", newFilters);
+    console.log("Filtros aplicados (lógica a ser implementada)");
     setFilters(newFilters);
     // Não buscar dados novamente, apenas filtrar os dados existentes
   };
-  
-  // Aplicar filtros localmente
-  const filteredConstructions = useMemo(() => {
-    if (!Object.keys(filters).length) return memoizedConstructions;
-    
-    return memoizedConstructions.filter(construction => {
-      // Implemente sua lógica de filtro aqui
-      // Exemplo:
-      // if (filters.status && construction.status !== filters.status) return false;
-      // if (filters.city && construction.city !== filters.city) return false;
-      return true;
-    });
-  }, [memoizedConstructions, filters]);
   
   return (
     <div className="container mx-auto p-4">
@@ -75,7 +62,7 @@ export default function IndexPage() {
       ) : error ? (
         <div className="text-red-500">{error}</div>
       ) : (
-        <Map constructions={filteredConstructions} />
+        <Map constructions={memoizedConstructions} />
       )}
     </div>
   );
